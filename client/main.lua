@@ -54,7 +54,7 @@ function UpdateBlip()
 
         HotdogBlip = AddBlipForCoord(coords.x, coords.y, coords.z)
         
-        SetBlipSprite(HotdogBlip, 93)
+        SetBlipSprite(HotdogBlip, 479)
         SetBlipDisplay(HotdogBlip, 4)
         SetBlipScale(HotdogBlip, 0.6)
         SetBlipAsShortRange(HotdogBlip, true)
