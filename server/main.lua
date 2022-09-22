@@ -29,11 +29,13 @@ end)
 
 -- Events
 
-RegisterNetEvent('qb-hotdogjob:server:Sell', function(Amount, Price)
+RegisterNetEvent('qb-hotdogjob:server:Sell', function(coords, amount, price)
     local src = source
+    local pCoords = GetEntityCoords(GetPlayerPed(src))
     local Player = QBCore.Functions.GetPlayer(src)
-
-    Player.Functions.AddMoney('cash', tonumber(Amount * Price))
+    if not Player then return end
+    if #(pCoords - coords) > 4 then exports['qb-core']:ExploitBan(src, 'hotdog job') end
+    Player.Functions.AddMoney('cash', tonumber(amount * price), 'hotdog')
 end)
 
 RegisterNetEvent('qb-hotdogjob:server:UpdateReputation', function(quality)
@@ -84,6 +86,6 @@ end)
 
 -- Commands
 
-QBCore.Commands.Add("removestand", Lang:t("info.command"), {}, false, function(source, args)
+QBCore.Commands.Add("removestand", Lang:t("info.command"), {}, false, function(source, _)
     TriggerClientEvent('qb-hotdogjob:staff:DeletStand', source)
 end, 'admin')

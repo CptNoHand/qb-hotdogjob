@@ -1,5 +1,5 @@
 local QBCore = exports['qb-core']:GetCoreObject()
-local PlayerData = {}
+local PlayerData = QBCore.Functions.GetPlayerData()
 local HotdogBlip = nil
 local IsWorking = false
 local StandObject = nil
@@ -27,6 +27,17 @@ local AnimationData = {
 }
 
 local DetachKeys = {157, 158, 160, 164, 165, 73, 36, 44}
+
+-- Handlers
+
+AddEventHandler('onResourceStop', function(resource)
+    if resource == GetCurrentResourceName() then
+        if StandObject ~= nil then
+            DeleteObject(StandObject)
+            ClearPedTasksImmediately(PlayerPedId())
+        end
+    end
+end)
 
 -- Local Functions
 
@@ -70,11 +81,11 @@ local function UpdateBlip()
 
             HotdogBlip = AddBlipForCoord(coords.x, coords.y, coords.z)
 
-            SetBlipSprite(HotdogBlip, 93)
+            SetBlipSprite(HotdogBlip, 542)
             SetBlipDisplay(HotdogBlip, 4)
             SetBlipScale(HotdogBlip, 0.6)
             SetBlipAsShortRange(HotdogBlip, true)
-            SetBlipColour(HotdogBlip, 0)
+            SetBlipColour(HotdogBlip, 17)
             BeginTextCommandSetBlipName("STRING")
             AddTextComponentSubstringPlayerName(Lang:t("info.blip_name"))
             EndTextCommandSetBlipName(HotdogBlip)
@@ -155,6 +166,15 @@ local function LetKraamLose()
     SetEntityCollision(StandObject, true, true)
     ClearPedTasks(PlayerPed)
     IsPushing = false
+end
+
+if Config.UseTarget then
+    RegisterCommand('letgostand', function()
+        if IsPushing then
+            LetKraamLose()
+        end
+    end)
+    RegisterKeyMapping('letgostand',Lang:t("keymapping.gkey"), 'keyboard', 'G')
 end
 
 local function CheckLoop()
@@ -356,7 +376,7 @@ local function HotdogLoop()
                                         SetPedKeepTask(SellingData.Target, false)
                                         SetEntityAsNoLongerNeeded(SellingData.Target)
                                         ClearPedTasksImmediately(SellingData.Target)
-                                        FreezeEntityPosition(ped, true)
+                                        FreezeEntityPosition(PlayerPed, true)
                                     end
                                     SellingData.Enabled = false
                                     SellingData.Target = nil
@@ -429,19 +449,80 @@ end
 local function StartWorking()
     QBCore.Functions.TriggerCallback('qb-hotdogjob:server:HasMoney', function(HasMoney)
         if HasMoney then
-            local PlayerPed = PlayerPedId()
-            local SpawnCoords = Config.Locations["spawn"].coords
-            IsWorking = true
-
-            LoadModel("prop_hotdogstand_01")
-            StandObject = CreateObject(`prop_hotdogstand_01`, SpawnCoords.x, SpawnCoords.y, SpawnCoords.z, true)
-            PlaceObjectOnGroundProperly(StandObject)
-            SetEntityHeading(StandObject, SpawnCoords.w - 90)
-            FreezeEntityPosition(StandObject, true)
-            HotdogLoop()
-            UpdateUI()
-            CheckLoop()
-            QBCore.Functions.Notify(Lang:t("success.deposit", {deposit = Config.StandDeposit}), 'success')
+            if Config.UseTarget then
+                local SpawnCoords = Config.Locations["spawn"].coords
+                IsWorking = true
+                LoadModel("prop_hotdogstand_01")
+                StandObject = CreateObject(`prop_hotdogstand_01`, SpawnCoords.x, SpawnCoords.y, SpawnCoords.z, true)
+                PlaceObjectOnGroundProperly(StandObject)
+                SetEntityHeading(StandObject, SpawnCoords.w - 90)
+                FreezeEntityPosition(StandObject, true)
+                exports['qb-target']:AddTargetEntity(StandObject, {
+                    options = {
+                        {
+                            icon = "fas fa-hand",
+                            label = Lang:t('info.grab'),
+                            canInteract = function()
+                                return IsWorking
+                            end,
+                            action = function()
+                                if not IsPushing then
+                                    if SellingData.Enabled then
+                                        if SellingData.Target ~= nil then
+                                            SetPedKeepTask(SellingData.Target, false)
+                                            SetEntityAsNoLongerNeeded(SellingData.Target)
+                                            ClearPedTasksImmediately(SellingData.Target)
+                                            FreezeEntityPosition(PlayerPed, true)
+                                        end
+                                        SellingData.Enabled = false
+                                        SellingData.Target = nil
+                                        SellingData.HasTarget = false
+                                        TakeHotdogStand()
+                                    else
+                                        TakeHotdogStand()
+                                    end
+                                else
+                                    LetKraamLose()
+                                end
+                            end
+                        }, {
+                            icon = "fas fa-hotdog",
+                            label = Lang:t('info.prepare'),
+                            canInteract = function()
+                                return IsWorking
+                            end,
+                            action = function()
+                                if not IsPushing then
+                                    StartHotdogMinigame()
+                                end
+                            end
+                        }, {
+                            icon = "fas fa-hand-holding-usd",
+                            label = Lang:t('info.toggle_sell'),
+                            type = 'client',
+                            event = 'qb-hotdogjob:client:ToggleSell',
+                            canInteract = function()
+                                return IsWorking
+                            end
+                        }
+                    },
+                    distance = 3.0
+                })
+                UpdateUI()
+                QBCore.Functions.Notify(Lang:t("success.deposit", {deposit = Config.StandDeposit}), 'success')
+            else
+                local SpawnCoords = Config.Locations["spawn"].coords
+                IsWorking = true
+                LoadModel("prop_hotdogstand_01")
+                StandObject = CreateObject(`prop_hotdogstand_01`, SpawnCoords.x, SpawnCoords.y, SpawnCoords.z, true)
+                PlaceObjectOnGroundProperly(StandObject)
+                SetEntityHeading(StandObject, SpawnCoords.w - 90)
+                FreezeEntityPosition(StandObject, true)
+                HotdogLoop()
+                UpdateUI()
+                CheckLoop()
+                QBCore.Functions.Notify(Lang:t("success.deposit", {deposit = Config.StandDeposit}), 'success')
+            end
         else
             QBCore.Functions.Notify(Lang:t("error.no_money"), 'error')
         end
@@ -495,13 +576,8 @@ local function SellToPed(ped)
     SetEntityAsNoLongerNeeded(ped)
     ClearPedTasks(ped)
 
-    local SellingPrice = 0
-    local HotdogsForSale = 0
-
-    local Selling = false
-    local HotdogObject = nil
-    local HotdogObject2 = nil
-    local AnimPlayed = false
+    local SellingPrice
+    local HotdogsForSale
 
     SellingData.Hotdog = GetAvailableHotdog()
 
@@ -524,8 +600,7 @@ local function SellToPed(ped)
     local coords = GetOffsetFromEntityInWorldCoords(StandObject, OffsetData.x, OffsetData.y, OffsetData.z)
     local pedCoords = GetEntityCoords(ped)
     local pedDist = #(coords - pedCoords)
-    local playercoords = GetEntityCoords(PlayerPedId())
-    local PlayerDist = #(playercoords - coords)
+    local PlayerDist
 
     TaskGoStraightToCoord(ped, coords, 1.2, -1, 0.0, 0.0)
 
@@ -585,66 +660,112 @@ local function SellToPed(ped)
                     end
                 end
 
-                DrawText3Ds(pedCoords.x, pedCoords.y, pedCoords.z, Lang:t("info.sell_dogs", {value = HotdogsForSale, value2 = (HotdogsForSale * SellingPrice)}))
-                if IsControlJustPressed(0, 161) or IsDisabledControlJustPressed(0, 161) then
-                    QBCore.Functions.Notify(Lang:t("success.sold_hotdogs", {value = HotdogsForSale, value2 = (HotdogsForSale * SellingPrice)}), 'success')
-                    TriggerServerEvent('qb-hotdogjob:server:Sell', HotdogsForSale, SellingPrice)
-                    SellingData.HasTarget = false
-                    local Myped = PlayerPedId()
+                if Config.UseTarget then
+                    if not zoneMade then
+                        zoneMade = true
+                        exports['qb-target']:AddEntityZone('sellingDogPed', ped, {
+                            name = 'sellingDogPed',
+                            debugPoly = false,
+                        }, {
+                            options = {
+                                {
+                                    icon = 'fas fa-hand-holding-dollar',
+                                    label = Lang:t("info.sell_dogs_target", {value = HotdogsForSale, value2 = (HotdogsForSale * SellingPrice)}),
+                                    action = function(entity)
+                                        QBCore.Functions.Notify(Lang:t("success.sold_hotdogs", {value = HotdogsForSale, value2 = (HotdogsForSale * SellingPrice)}), 'success')
+                                        TriggerServerEvent('qb-hotdogjob:server:Sell', pedCoords, HotdogsForSale, SellingPrice)
+                                        SellingData.HasTarget = false
+                                        LoadAnim('mp_common')
+                                        TaskPlayAnim(PlayerPedId(), 'mp_common', 'givetake1_b', 8.0, 8.0, 1100, 48, 0.0, 0, 0, 0)
+                                        FreezeEntityPosition(entity, false)
+                                        SetPedKeepTask(entity, false)
+                                        SetEntityAsNoLongerNeeded(entity)
+                                        ClearPedTasksImmediately(entity)
+                                        SellingData.RecentPeds[#SellingData.RecentPeds+1] = entity
+                                        Config.Stock[SellingData.Hotdog].Current = Config.Stock[SellingData.Hotdog].Current - HotdogsForSale
+                                        SellingData.Hotdog = nil
+                                        exports['qb-target']:RemoveZone('sellingDogPed')
+                                        zoneMade = false
+                                    end,
+                                },
+                                {
+                                    icon = 'fas fa-x',
+                                    label = 'Decline offer',
+                                    action = function(entity)
+                                        QBCore.Functions.Notify(Lang:t("error.cust_refused"), 'error')
+                                        SellingData.HasTarget = false
+                                        FreezeEntityPosition(entity, false)
+                                        SetPedKeepTask(entity, false)
+                                        SetEntityAsNoLongerNeeded(entity)
+                                        ClearPedTasksImmediately(entity)
+                                        SellingData.RecentPeds[#SellingData.RecentPeds+1] = entity
+                                        SellingData.Hotdog = nil
+                                        exports['qb-target']:RemoveZone('sellingDogPed')
+                                        zoneMade = false
+                                    end,
+                                },
+                            },
+                            distance = 1.5,
+                        })
+                    end
+                else
+                    DrawText3Ds(pedCoords.x, pedCoords.y, pedCoords.z, Lang:t("info.sell_dogs", {value = HotdogsForSale, value2 = (HotdogsForSale * SellingPrice)}))
+                    if IsControlJustPressed(0, 161) or IsDisabledControlJustPressed(0, 161) then
+                        QBCore.Functions.Notify(Lang:t("success.sold_hotdogs", {value = HotdogsForSale, value2 = (HotdogsForSale * SellingPrice)}), 'success')
+                        TriggerServerEvent('qb-hotdogjob:server:Sell', pedCoords, HotdogsForSale, SellingPrice)
+                        SellingData.HasTarget = false
+                        local Myped = PlayerPedId()
 
-                    Selling = true
+                        local Selling = true
+                        local HotdogObject = nil
+                        local AnimPlayed = false
 
-                    while Selling do
-                        if not IsEntityPlayingAnim(Myped, 'mp_common', 'givetake1_b', 3) then
-                            LoadAnim('mp_common')
-                            if not AnimPlayed then
-                                TaskPlayAnim(Myped, 'mp_common', 'givetake1_b', 8.0, 8.0, 1100, 48, 0.0, 0, 0, 0)
-                                AnimPlayed = true
+                        while Selling do
+                            if not IsEntityPlayingAnim(Myped, 'mp_common', 'givetake1_b', 3) then
+                                LoadAnim('mp_common')
+                                if not AnimPlayed then
+                                    TaskPlayAnim(Myped, 'mp_common', 'givetake1_b', 8.0, 8.0, 1100, 48, 0.0, 0, 0, 0)
+                                    AnimPlayed = true
+                                end
+                                if HotdogObject == nil then
+                                    HotdogObject = CreateObject(`prop_cs_hotdog_01`, 0, 0, 0, true, true, true)
+                                end
+                                AttachEntityToEntity(HotdogObject, Myped, GetPedBoneIndex(Myped, 57005), 0.12, 0.0, -0.05, 220.0, 120.0, 0.0, true, true, false, true, 1, true)
+                                SetTimeout(1250, function()
+                                    Selling = false
+                                end)
                             end
-                            if HotdogObject == nil then
-                                HotdogObject = CreateObject(`prop_cs_hotdog_01`, 0, 0, 0, true, true, true)
-                            end
-                            AttachEntityToEntity(HotdogObject, Myped, GetPedBoneIndex(Myped, 57005), 0.12, 0.0, -0.05, 220.0, 120.0, 0.0, true, true, false, true, 1, true)
-                            SetTimeout(1250, function()
-                                Selling = false
-                            end)
+
+                            Wait(0)
                         end
 
-                        Wait(0)
+                        if HotdogObject ~= nil then
+                            DetachEntity(HotdogObject, 1, 1)
+                            DeleteEntity(HotdogObject)
+                        end
+
+                        FreezeEntityPosition(ped, false)
+                        SetPedKeepTask(ped, false)
+                        SetEntityAsNoLongerNeeded(ped)
+                        ClearPedTasksImmediately(ped)
+                        SellingData.RecentPeds[#SellingData.RecentPeds+1] = ped
+                        Config.Stock[SellingData.Hotdog].Current = Config.Stock[SellingData.Hotdog].Current - HotdogsForSale
+                        SellingData.Hotdog = nil
+                        break
                     end
 
-                    if HotdogObject ~= nil then
-                        DetachEntity(HotdogObject, 1, 1)
-                        DeleteEntity(HotdogObject)
-                        AnimPlayed = false
-                        HotdogObject = nil
+                    if IsControlJustPressed(0, 162) or IsDisabledControlJustPressed(0, 162) then
+                        QBCore.Functions.Notify(Lang:t("error.cust_refused"), 'error')
+                        SellingData.HasTarget = false
+
+                        FreezeEntityPosition(ped, false)
+                        SetPedKeepTask(ped, false)
+                        SetEntityAsNoLongerNeeded(ped)
+                        ClearPedTasksImmediately(ped)
+                        SellingData.RecentPeds[#SellingData.RecentPeds+1] = ped
+                        SellingData.Hotdog = nil
+                        break
                     end
-
-                    FreezeEntityPosition(ped, false)
-                    SetPedKeepTask(ped, false)
-                    SetEntityAsNoLongerNeeded(ped)
-                    ClearPedTasksImmediately(ped)
-                    SellingData.RecentPeds[#SellingData.RecentPeds+1] = ped
-                    Config.Stock[SellingData.Hotdog].Current = Config.Stock[SellingData.Hotdog].Current - HotdogsForSale
-                    SellingData.Hotdog = nil
-                    SellingPrice = 0
-                    HotdogsForSale = 0
-                    break
-                end
-
-                if IsControlJustPressed(0, 162) or IsDisabledControlJustPressed(0, 162) then
-                    QBCore.Functions.Notify(Lang:t("error.cust_refused"), 'error')
-                    SellingData.HasTarget = false
-
-                    FreezeEntityPosition(ped, false)
-                    SetPedKeepTask(ped, false)
-                    SetEntityAsNoLongerNeeded(ped)
-                    ClearPedTasksImmediately(ped)
-                    SellingData.RecentPeds[#SellingData.RecentPeds+1] = ped
-                    SellingData.Hotdog = nil
-                    SellingPrice = 0
-                    HotdogsForSale = 0
-                    break
                 end
             else
                 SellingData.HasTarget = false
@@ -657,7 +778,7 @@ local function SellToPed(ped)
                 SellingData.Target = nil
                 SellingData.HasTarget = false
                 SellingData.Hotdog = nil
-                QBCore.Functions.Notify(Lang:t("error.too_far"), 'error')
+                QBCore.Functions.Notify(Lang:t("error.no_dogs"), 'error')
                 break
             end
         else
@@ -689,7 +810,6 @@ local function ToggleSell()
             CreateThread(function()
                 while true do
                     if SellingData.Enabled then
-                        local player = PlayerPedId()
                         local coords = GetOffsetFromEntityInWorldCoords(StandObject, OffsetData.x, OffsetData.y, OffsetData.z)
 
                         if not SellingData.HasTarget then
@@ -739,7 +859,7 @@ RegisterNetEvent('qb-hotdogjob:client:UpdateReputation', function(JobRep)
     UpdateLevel()
 end)
 
-RegisterNetEvent('qb-hotdogjob:client:ToggleSell', function(data)
+RegisterNetEvent('qb-hotdogjob:client:ToggleSell', function()
     if not SellingData.Enabled then
         SellingData.Enabled = true
         ToggleSell()
@@ -778,56 +898,72 @@ RegisterNetEvent('qb-hotdogjob:staff:DeletStand', function()
     end
 end)
 
-AddEventHandler('onResourceStop', function(resource)
-    if resource == GetCurrentResourceName() then
-        if StandObject ~= nil then
-            DeleteObject(StandObject)
-            ClearPedTasksImmediately(PlayerPedId())
-        end
-    end
-end)
-
 -- Threads
 
 CreateThread(function()
-    while true do
-        local inRange = false
-        if LocalPlayer.state.isLoggedIn then
-            if Config ~= nil then
-                if PlayerData.job.name == 'hotdog' then
-                    local PlayerPed = PlayerPedId()
-                    local PlayerPos = GetEntityCoords(PlayerPed)
-                    local v = Config.Locations["take"]
-                    local distance = #(PlayerPos - vector3(v.coords.x, v.coords.y, v.coords.z))
-                    if distance < 10 then
-                        inRange = true
-                        DrawMarker(2, v.coords.x, v.coords.y, v.coords.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.3, 0.3, 255, 0, 0, 255, 0, 0, 0, 1, 0, 0, 0)
+    if Config.UseTarget then
+        exports['qb-target']:AddBoxZone('hotdog_start', vector3(Config.Locations["take"].coords.x, Config.Locations["take"].coords.y, Config.Locations["take"].coords.z), 1, 1, {
+            name = 'hotdog_start',
+            debugPoly = false,
+            heading = Config.Locations["take"].coords.w,
+            minZ = Config.Locations["take"].coords.z - 1,
+            maxZ = Config.Locations["take"].coords.z + 1,
+        }, {
+            options = {
+                {
+                    label = 'Toggle Work',
+                    job = 'hotdog',
+                    icon = 'fa-solid fa-hotdog',
+                    action = function()
                         if not IsWorking then
-                            if distance < OffsetData.Distance then
-                                DrawText3Ds(v.coords.x, v.coords.y, v.coords.z, Lang:t("info.start_working"))
+                            StartWorking()
+                        else
+                            StopWorking()
+                        end
+                    end
+                }
+            },
+            distance = 2.5
+        })
+    else
+        local inZone = false
+        local hotdogStart = BoxZone:Create(vector3(Config.Locations["take"].coords.x, Config.Locations["take"].coords.y, Config.Locations["take"].coords.z), 1.0, 1.0, {
+            name="hotdog_start",
+            debugPoly = false,
+            minZ = Config.Locations["take"].coords.z - 1,
+            maxZ = Config.Locations["take"].coords.z + 1,
+        })
+
+        hotdogStart:onPlayerInOut(function(isPointInside)
+            if isPointInside then
+                inZone = true
+                if PlayerData.job.name == 'hotdog' then
+                    if not IsWorking then
+                        exports['qb-core']:DrawText(Lang:t("info.start_working"), 'left')
+                        CreateThread(function()
+                            while inZone do
+                                Wait(0)
                                 if IsControlJustPressed(0, 38) then
                                     StartWorking()
                                 end
-                            elseif distance < 3 then
-                                DrawText3Ds(v.coords.x, v.coords.y, v.coords.z, Lang:t("info.start_work"))
                             end
-                        else
-                            if distance < OffsetData.Distance then
-                                DrawText3Ds(v.coords.x, v.coords.y, v.coords.z, Lang:t("info.stop_working"))
+                        end)
+                    else
+                        exports['qb-core']:DrawText(Lang:t("info.stop_working"), 'left')
+                        CreateThread(function()
+                            while inZone do
+                                Wait(0)
                                 if IsControlJustPressed(0, 38) then
                                     StopWorking()
                                 end
-                            elseif distance < 3 then
-                                DrawText3Ds(v.coords.x, v.coords.y, v.coords.z, Lang:t("info.stop_work"))
                             end
-                        end
+                        end)
                     end
                 end
+            else
+                inZone = false
+                exports['qb-core']:HideText()
             end
-        end
-        if not inRange then
-            Wait(1000)
-        end
-        Wait(3)
+        end)
     end
 end)
