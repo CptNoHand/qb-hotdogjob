@@ -247,54 +247,7 @@ local function PreparingAnimCheck()
 
             Wait(200)
         end
-
-local function TakeHotdogStand()
-    local PlayerPed = PlayerPedId()
-    IsPushing = true
-    NetworkRequestControlOfEntity(StandObject)
-    LoadAnim(AnimationData.lib)
-    TaskPlayAnim(PlayerPed, AnimationData.lib, AnimationData.anim, 8.0, 8.0, -1, 50, 0, false, false, false)
-    SetTimeout(150, function()
-        AttachEntityToEntity(StandObject, PlayerPed, GetPedBoneIndex(PlayerPed, 28422), -0.45, -1.2, -0.82, 180.0, 180.0, 270.0, false, false, false, false, 1, true)
     end)
-    FreezeEntityPosition(StandObject, false)
-    AnimLoop()
-end
-
-local function FinishMinigame(faults)
-    local Quality = "common"
-    if faults == 0 then
-        Quality = "exotic"
-    elseif faults == 1 then
-        Quality = "rare"
-    end
-    if Config.Stock[Quality].Current + 1 <= Config.Stock[Quality].Max[Config.MyLevel] then
-        TriggerServerEvent('qb-hotdogjob:server:UpdateReputation', Quality)
-        if Config.MyLevel == 1 then
-            QBCore.Functions.Notify(Lang:t("success.made_hotdog", {value = Config.Stock[Quality].Label}), "success")
-            Config.Stock[Quality].Current = Config.Stock[Quality].Current + 1
-        else
-            local Luck = math.random(1, 2)
-            local LuckyNumber = math.random(1, 2)
-            local LuckyAmount = math.random(1, Config.MyLevel)
-            if Luck == LuckyNumber then
-                QBCore.Functions.Notify(Lang:t("success.made_luck_hotdog", {value = LuckyAmount, value2 = Config.Stock[Quality].Label}), "success")
-                Config.Stock[Quality].Current = Config.Stock[Quality].Current + LuckyAmount
-            else
-                QBCore.Functions.Notify(Lang:t("success.made_hotdog", {value = Config.Stock[Quality].Label}), "success")
-                Config.Stock[Quality].Current = Config.Stock[Quality].Current + 1
-            end
-        end
-    else
-        QBCore.Functions.Notify(Lang:t("error.no_more", {value = Config.Stock[Quality].Label}), "error")
-    end
-    PreparingFood = false
-end
-
-local function StartHotdogMinigame()
-    PrepareAnim()
-    TriggerEvent('qb-keyminigame:show')
-    TriggerEvent('qb-keyminigame:start', FinishMinigame)
 end
 
 local function PrepareAnim()
